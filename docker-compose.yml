@@ -1,0 +1,214 @@
+version: '3.8'
+
+services:
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    ports:
+      - "18789:18789"
+    environment:
+      # Gateway token (from existing config)
+      OPENCLAW_GATEWAY_TOKEN: "REDACTED_GATEWAY_TOKEN"
+      # OpenRouter API key
+      OPENROUTER_API_KEY: "REDACTED_OPENROUTER_KEY"
+      # Ollama integration (local models)
+      OLLAMA_API_KEY: "ollama-local"
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      OPENAI_BASE_URL: "http://host.docker.internal:11434/v1"
+      OPENAI_API_KEY: "ollama"
+      # Gateway configuration (custom bind for Docker accessibility)
+      OPENCLAW_GATEWAY_BIND: "0.0.0.0"
+      OPENCLAW_GATEWAY_AUTH_MODE: "token"
+      # Enable sandbox mode
+      OPENCLAW_SANDBOX: "true"
+      # Docker socket for sandboxing
+      OPENCLAW_DOCKER_SOCKET: "/var/run/docker.sock"
+      # Enhanced logging
+      LOG_LEVEL: "info"
+      NODE_ENV: "production"
+      # Timezone
+      TZ: "America/New_York"
+      # Video generation configuration (configured but blocked by v2026.4.21 async bug)
+      OPENCLAW_VIDEO_GENERATION_MODEL_PRIMARY: "openrouter/bytedance/seedance-2.0"
+      OPENCLAW_VIDEO_GENERATION_MODEL_FALLBACKS: "google/veo-3.1-fast-generate-preview"
+      # Image generation - using Gemini (working) via environment hints
+      # Note: OpenClaw doesn't support Seedream 4.5 (image-only model incompatible)
+    volumes:
+      # Persistent storage for config, auth, and workspace
+      - openclaw-data:/home/node/.openclaw
+      # Local workspace folder (accessible from Windows)
+      - ./workspace:/home/node/.openclaw/workspace
+      # Obsidian vault (read-only access)
+      - "H:/Documents/Papi projects:/obsidian-vault:ro"
+      # Media output directories
+      - "H:/Project Pictures:/media/images"
+      - "H:/Videos:/media/videos"
+      # Docker socket for sandboxing
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Security hardening (balanced - keeps functionality)
+    security_opt:
+      - no-new-privileges:true  # Prevent privilege escalation
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN           # Allow changing file ownership
+      - DAC_OVERRIDE    # Allow file access overrides
+      - FOWNER          # Allow file ownership operations
+      - SETGID          # Allow setting group IDs
+      - SETUID          # Allow setting user IDs
+      - NET_BIND_SERVICE # Allow binding to ports
+    # Resource limits (prevent runaway processes)
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'      # Max 4 CPU cores
+          memory: 8G       # Max 8GB RAM
+        reservations:
+          cpus: '0.5'      # Guarantee at least 0.5 CPU
+          memory: 512M     # Guarantee at least 512MB RAM
+    # Process limits
+    ulimits:
+      nproc: 512          # Max 512 processes (prevent fork bombs)
+      nofile:
+        soft: 4096        # Soft limit for open files
+        hard: 8192        # Hard limit for open files
+    # DNS configuration (using Cloudflare malware blocking)
+    dns:
+      - 1.1.1.2         # Cloudflare malware blocking DNS
+      - 1.0.0.2         # Cloudflare malware blocking DNS (secondary)
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"   # Max log file size
+        max-file: "5"     # Keep 5 log files (250MB total)
+        compress: "true"  # Compress old logs
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18789/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - openclaw-network
+
+  osp-marketing-tools:
+    image: osp-marketing-tools:http
+    container_name: osp-marketing-tools
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      MCP_TRANSPORT: "http"
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8000"
+    networks:
+      - openclaw-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  headless-chrome:
+    image: browserless/chrome:latest
+    container_name: headless-chrome
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - CONNECTION_TIMEOUT=60000
+      - MAX_CONCURRENT_SESSIONS=10
+      - PREBOOT_CHROME=true
+      - ENABLE_DEBUGGER=false
+    networks:
+      - openclaw-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/json/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  nginx-proxy:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "8932:8932"
+    volumes:
+      - ./nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - openclaw-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8932/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  notebooklm-mcp:
+    image: notebooklm-mcp:sse
+    container_name: notebooklm-mcp
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - NOTEBOOKLM_MCP_TRANSPORT=sse
+      - NOTEBOOKLM_MCP_HOST=0.0.0.0
+      - NOTEBOOKLM_MCP_PORT=8001
+    networks:
+      - openclaw-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  openclaw-cli:
+    image: ghcr.io/openclaw/openclaw:latest
+    container_name: openclaw-cli
+    profiles: ["cli"]
+    environment:
+      OPENCLAW_GATEWAY_TOKEN: "REDACTED_GATEWAY_TOKEN"
+      OPENROUTER_API_KEY: "REDACTED_OPENROUTER_KEY"
+    volumes:
+      - openclaw-data:/home/node/.openclaw
+    network_mode: "service:openclaw-gateway"
+
+networks:
+  openclaw-network:
+    driver: bridge
+
+volumes:
+  openclaw-data:
+    name: openclaw-data

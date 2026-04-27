@@ -1,0 +1,40 @@
+# OpenClaw Docker - Git Ignore
+
+# Environment variables with secrets
+.env
+*.env.local
+
+# Docker volumes and data
+openclaw-data/
+workspace/
+notebooklm-mcp/
+
+# Container-specific files
+*.log
+*.sqlite
+*.sqlite-journal
+
+# Sensitive credentials
+*credentials*.json
+*cookies*.json
+*token*.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Node modules if any
+node_modules/
+package-lock.json
