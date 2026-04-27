@@ -118,8 +118,8 @@ environment:
 
 ### OpenClaw Gateway Access
 - **URL:** http://localhost:18789
-- **Token:** `REDACTED_GATEWAY_TOKEN`
-- **Full URL:** http://localhost:18789/?token=REDACTED_GATEWAY_TOKEN
+- **Token:** Get from `.env` file (see Setup section)
+- **Full URL:** http://localhost:18789/?token=YOUR_TOKEN_HERE
 
 ---
 
