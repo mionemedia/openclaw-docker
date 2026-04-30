@@ -7,10 +7,11 @@ services:
     restart: unless-stopped
     ports:
       - "18789:18789"
+      - "3002:3000"  # React dev server (mapped to avoid port conflict)
     environment:
       # Gateway token (load from .env file - NEVER commit real tokens!)
       OPENCLAW_GATEWAY_TOKEN: "${OPENCLAW_GATEWAY_TOKEN}"
-      # OpenRouter API key (load from .env file - NEVER commit real keys!)
+      # OpenRouter API key (load from .env file - NEVER hardcode here)
       OPENROUTER_API_KEY: "${OPENROUTER_API_KEY}"
       # Ollama integration (local models - these are safe to commit)
       OLLAMA_API_KEY: "ollama-local"
@@ -93,30 +94,6 @@ services:
     networks:
       - openclaw-network
 
-  osp-marketing-tools:
-    image: osp-marketing-tools:http
-    container_name: osp-marketing-tools
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    environment:
-      MCP_TRANSPORT: "http"
-      MCP_HOST: "0.0.0.0"
-      MCP_PORT: "8000"
-    networks:
-      - openclaw-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   headless-chrome:
     image: browserless/chrome:latest
     container_name: headless-chrome
@@ -147,28 +124,6 @@ services:
           memory: 512M
         reservations:
           memory: 256M
-
-  nginx-proxy:
-    image: nginx:alpine
-    container_name: nginx-proxy
-    restart: unless-stopped
-    ports:
-      - "8932:8932"
-    volumes:
-      - ./nginx-proxy.conf:/etc/nginx/conf.d/default.conf:ro
-    networks:
-      - openclaw-network
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8932/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   notebooklm-mcp:
     image: notebooklm-mcp:sse
